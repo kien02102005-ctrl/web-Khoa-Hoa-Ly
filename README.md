@@ -456,6 +456,30 @@
         }
         .btn-edit { background-color: #f59e0b; color: white; }
         .btn-delete { background-color: #ef4444; color: white; }
+        .btn-attach { background-color: #3b82f6; color: white; }
+        .btn-download { background-color: #10b981; color: white; }
+
+        .file-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #e2e8f0;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin: 2px 0;
+            color: #1e293b;
+        }
+
+        .file-tag a {
+            color: #2563eb;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .file-tag a:hover {
+            text-decoration: underline;
+        }
 
         .kpi-target-bar {
             background: #e0f2fe;
@@ -612,7 +636,7 @@
                     <i class="fa-solid fa-list-check"></i> Danh sách
                 </li>
                 <li class="nav-item" onclick="switchTab('kanban', this)">
-                    <i class="fa-solid fa-table-columns"></i> Kanban
+                    <i class="fa-solid fa-table-columns"></i> Tiến độ công việc
                 </li>
                 <li class="nav-item" onclick="switchTab('gantt', this)">
                     <i class="fa-solid fa-bars-progress"></i> Sơ đồ Gantt
@@ -643,6 +667,9 @@
 
             <!-- Tab 1: Tổng quan -->
             <div id="tab-tong-quan" class="tab-content active">
+                <div id="admin-master-overview-banner" style="display:none; background: #eff6ff; border: 1px solid #bfdbfe; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; color: #1e40af;">
+                    <i class="fa-solid fa-circle-info"></i> Chế độ Admin: Đang tổng hợp dữ liệu toàn bộ tài khoản thường trong hệ thống.
+                </div>
                 <div class="dashboard-grid">
                     <div class="card">
                         <h3>Tỷ lệ Trạng thái</h3>
@@ -684,6 +711,7 @@
                                 <th>Mức ưu tiên</th>
                                 <th>Trạng thái</th>
                                 <th>Hạn chót</th>
+                                <th>File đính kèm</th>
                                 <th>Thao tác</th>
                             </tr>
                         </thead>
@@ -692,7 +720,7 @@
                 </div>
             </div>
 
-            <!-- Tab 3: Kanban -->
+            <!-- Tab 3: Kanban / Tiến độ công việc -->
             <div id="tab-kanban" class="tab-content">
                 <div class="kanban-board">
                     <div class="kanban-col" id="col-todo" ondragover="allowDrop(event)" ondrop="drop(event, 'Chưa làm')">
@@ -848,6 +876,7 @@
 
         let registeredUsers = [];
         let tasks = [];
+        let allUsersTasksMap = {}; // Lưu trữ toàn bộ tasks của tất cả user phục vụ tổng quan admin
         let kpiDataList = [];
         let sectionMaxScores = { A: 50, B: 30, C: 20 };
         let sectionTitles = {
@@ -879,6 +908,7 @@
 
         listenRealtimeUsers();
         listenRealtimeTemplates();
+        listenAllUsersTasks(); // Lắng nghe toàn bộ task hệ thống cho admin tổng quan
 
         function isValidNumber(val) {
             if (val === null || val === undefined) return false;
@@ -963,9 +993,9 @@
         ];
 
         const defaultTasks = [
-            { id: 'T001', name: 'Nghiên cứu tài liệu khoa học', status: 'Đang làm', date: '02/09/2026', priority: 'Cao' },
-            { id: 'T002', name: 'Chuẩn bị hóa chất phòng thí nghiệm', status: 'Chưa làm', date: '30/09/2026', priority: 'Bình thường' },
-            { id: 'T003', name: 'Viết báo cáo tổng kết tháng', status: 'Hoàn thành', date: '01/09/2026', priority: 'Thấp' }
+            { id: 'T001', name: 'Nghiên cứu tài liệu khoa học', status: 'Đang làm', date: '02/09/2026', priority: 'Cao', files: [] },
+            { id: 'T002', name: 'Chuẩn bị hóa chất phòng thí nghiệm', status: 'Chưa làm', date: '30/09/2026', priority: 'Bình thường', files: [] },
+            { id: 'T003', name: 'Viết báo cáo tổng kết tháng', status: 'Hoàn thành', date: '01/09/2026', priority: 'Thấp', files: [] }
         ];
 
         function initMonthSelector() {
@@ -1056,6 +1086,7 @@
             });
         }
 
+        // HÀM TẢI USER REALTIME VÀ TỰ ĐỘNG CẬP NHẬT BẢNG QUẢN LÝ
         function listenRealtimeUsers() {
             db.ref('users').on('value', snapshot => {
                 const data = snapshot.val();
@@ -1073,6 +1104,22 @@
                     populateAdminUserSelector();
                     populateKPITargetSelector();
                     renderUserManagementTable();
+                    renderDashboard(); // Cập nhật lại biểu đồ tổng quan khi user thay đổi
+                }
+            });
+        }
+
+        // Lắng nghe toàn bộ task của tất cả các user trên hệ thống
+        function listenAllUsersTasks() {
+            db.ref('tasks').on('value', snapshot => {
+                const data = snapshot.val();
+                if (data) {
+                    allUsersTasksMap = data;
+                } else {
+                    allUsersTasksMap = {};
+                }
+                if (isAdmin) {
+                    renderDashboard();
                 }
             });
         }
@@ -1285,12 +1332,15 @@
                 document.getElementById('admin-user-selector').style.display = 'flex';
                 document.getElementById('kpi-admin-target-bar').style.display = 'flex';
                 document.getElementById('nav-admin-users').style.display = 'flex';
+                document.getElementById('admin-master-overview-banner').style.display = 'block';
                 populateAdminUserSelector();
                 populateKPITargetSelector();
+                renderUserManagementTable();
             } else {
                 document.getElementById('admin-user-selector').style.display = 'none';
                 document.getElementById('kpi-admin-target-bar').style.display = 'none';
                 document.getElementById('nav-admin-users').style.display = 'none';
+                document.getElementById('admin-master-overview-banner').style.display = 'none';
             }
 
             listenRealtimeTasks();
@@ -1363,22 +1413,42 @@
             const titles = {
                 'tong-quan': 'Dashboard Thống Kê',
                 'danh-sach': 'Danh Sách Công Việc',
-                'kanban': 'Bảng Tiến Độ Kanban',
+                'kanban': 'Bảng Tiến Độ Công Việc',
                 'gantt': 'Sơ Đồ Lộ Trình Gantt',
                 'kpi': 'Đánh Giá KPI Cán Bộ',
                 'admin-users': 'Quản Lý Hệ Thống Users'
             };
             document.getElementById('page-title').innerText = titles[tabId] || 'WORKSPACE';
+            
+            if (tabId === 'tong-quan') {
+                renderDashboard();
+            } else if (tabId === 'admin-users') {
+                renderUserManagementTable();
+            }
         }
 
         function renderDashboard() {
             const statusCounts = { 'Chưa làm': 0, 'Đang làm': 0, 'Hoàn thành': 0 };
             const priorityCounts = { 'Cao': 0, 'Bình thường': 0, 'Thấp': 0 };
 
-            tasks.forEach(t => {
-                if (statusCounts[t.status] !== undefined) statusCounts[t.status]++;
-                if (priorityCounts[t.priority] !== undefined) priorityCounts[t.priority]++;
-            });
+            if (isAdmin) {
+                // TỔNG HỢP TOÀN BỘ DỮ LIỆU CÔNG VIỆC CỦA CÁC TÀI KHOẢN THƯỜNG TRÊN WEB
+                Object.keys(allUsersTasksMap).forEach(username => {
+                    const userTasks = allUsersTasksMap[username];
+                    if (userTasks) {
+                        const taskList = Array.isArray(userTasks) ? userTasks : Object.values(userTasks);
+                        taskList.forEach(t => {
+                            if (statusCounts[t.status] !== undefined) statusCounts[t.status]++;
+                            if (priorityCounts[t.priority] !== undefined) priorityCounts[t.priority]++;
+                        });
+                    }
+                });
+            } else {
+                tasks.forEach(t => {
+                    if (statusCounts[t.status] !== undefined) statusCounts[t.status]++;
+                    if (priorityCounts[t.priority] !== undefined) priorityCounts[t.priority]++;
+                });
+            }
 
             const ctxStatus = document.getElementById('statusChart').getContext('2d');
             if (statusChartInstance) statusChartInstance.destroy();
@@ -1421,6 +1491,20 @@
 
                 const statusClass = t.status === 'Đang làm' ? 'status-doing' : t.status === 'Chưa làm' ? 'status-todo' : 'status-done';
 
+                // Xử lý hiển thị danh sách file đính kèm
+                let fileListHTML = '';
+                if (t.files && t.files.length > 0) {
+                    fileListHTML = t.files.map((f, index) => `
+                        <div class="file-tag">
+                            <i class="fa-solid fa-paperclip"></i> 
+                            <a href="${f.data}" download="${f.name}" title="Tải file về máy">${f.name}</a>
+                            ${!isAdmin ? `<i class="fa-solid fa-xmark" style="cursor:pointer; color:#ef4444; margin-left:4px;" onclick="removeTaskFile('${t.id}', ${index})" title="Xóa file"></i>` : ''}
+                        </div>
+                    `).join('<br>');
+                } else {
+                    fileListHTML = '<span style="color:#94a3b8; font-size:12px;">Chưa có file</span>';
+                }
+
                 tr.innerHTML = `
                     <td><strong>${t.id}</strong></td>
                     <td>${t.name} ${overdue ? '<span class="badge-overdue"><i class="fa-solid fa-triangle-exclamation"></i> Quá hạn</span>' : ''}</td>
@@ -1437,11 +1521,60 @@
                         <input type="date" value="${convertToISODate(t.date)}" class="inline-date-picker" onchange="updateTaskDate('${t.id}', this.value)" />
                     </td>
                     <td>
+                        <div id="file-container-${t.id}">${fileListHTML}</div>
+                    </td>
+                    <td>
+                        ${!isAdmin ? `
+                            <input type="file" id="file-input-${t.id}" style="display:none;" onchange="uploadTaskFile('${t.id}', this)" />
+                            <button class="btn-sm btn-attach" onclick="document.getElementById('file-input-${t.id}').click()"><i class="fa-solid fa-paperclip"></i> File đính kèm</button>
+                        ` : ''}
                         <button class="btn-sm btn-delete" onclick="deleteTask('${t.id}')"><i class="fa-solid fa-trash"></i> Xóa</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
             });
+        }
+
+        // XỬ LÝ UPLOAD FILE LÊN TÍCH HỢP CHO USER
+        function uploadTaskFile(taskId, inputEl) {
+            const file = inputEl.files[0];
+            if (!file) return;
+
+            // Kiểm tra kích thước file (khống chế tối đa 5MB để giữ tốc độ sync Database)
+            if (file.size > 5 * 1024 * 1024) {
+                alert('Dung lượng file vượt quá 5MB. Vui lòng chọn file có kích thước nhỏ hơn!');
+                inputEl.value = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const base64Data = e.target.result;
+                const task = tasks.find(t => t.id === taskId);
+                if (task) {
+                    if (!task.files) task.files = [];
+                    task.files.push({
+                        name: file.name,
+                        data: base64Data,
+                        uploadedAt: new Date().toISOString()
+                    });
+                    saveUserData();
+                    alert(`Đã đính kèm file "${file.name}" thành công!`);
+                }
+            };
+            reader.readAsDataURL(file);
+            inputEl.value = '';
+        }
+
+        // XÓA FILE ĐÍNH KÈM
+        function removeTaskFile(taskId, fileIndex) {
+            if (confirm('Bạn có chắc chắn muốn xóa file đính kèm này?')) {
+                const task = tasks.find(t => t.id === taskId);
+                if (task && task.files) {
+                    task.files.splice(fileIndex, 1);
+                    saveUserData();
+                }
+            }
         }
 
         function updateTaskStatus(id, newStatus) {
@@ -1473,7 +1606,8 @@
                 name: name,
                 priority: priority,
                 status: 'Chưa làm',
-                date: convertToDisplayDate(dateISO)
+                date: convertToDisplayDate(dateISO),
+                files: []
             };
 
             tasks.push(newTask);
@@ -1506,11 +1640,13 @@
                 card.draggable = true;
                 card.ondragstart = (e) => e.dataTransfer.setData('text/plain', t.id);
 
+                let hasFilesBadge = (t.files && t.files.length > 0) ? `<span style="color:#2563eb; font-size:11px;"><i class="fa-solid fa-paperclip"></i> ${t.files.length}</span>` : '';
+
                 card.innerHTML = `
                     <div class="id">${t.id} ${overdue ? '<span class="badge-overdue">Quá hạn</span>' : ''}</div>
                     <div class="title">${t.name}</div>
                     <div class="meta">
-                        <span><i class="fa-regular fa-clock"></i> ${t.date || 'N/A'}</span>
+                        <span><i class="fa-regular fa-clock"></i> ${t.date || 'N/A'} ${hasFilesBadge}</span>
                         <span style="font-weight: bold;">${t.priority}</span>
                     </div>
                 `;
@@ -1851,6 +1987,7 @@
             renderKPITable();
         }
 
+        // HÀM HIỂN THỊ DANH SÁCH USER TRÊN GIAO DIỆN QUẢN LÝ TÀI KHOẢN
         function renderUserManagementTable() {
             const tbody = document.getElementById('user-management-body');
             if (!tbody) return;
@@ -2032,7 +2169,7 @@
             const monthParts = selectedKpiMonth.split('-');
             const monthStr = `Tháng ${monthParts[1]} năm ${monthParts[0]}`;
 
-            // Bảng Header 2 cột: Cột phải chứa cả Quốc hiệu và Tiêu ngữ căn giữa tương quan với nhau
+            // Bảng Header 2 cột: Dòng Khoa Hóa lý căn giữa tương quan với TRUNG TÂM KSBT BẮC NINH
             const headerTable = new Table({
                 width: { size: 100, type: WidthType.PERCENTAGE },
                 borders: {
@@ -2051,14 +2188,14 @@
                                 verticalAlign: VerticalAlign.TOP,
                                 children: [
                                     new Paragraph({
-                                        alignment: AlignmentType.LEFT,
+                                        alignment: AlignmentType.CENTER,
                                         spacing: { after: 50 },
                                         children: [
                                             new TextRun({ text: "TRUNG TÂM KSBT BẮC NINH", bold: true, font: "Times New Roman", size: 22 })
                                         ]
                                     }),
                                     new Paragraph({
-                                        alignment: AlignmentType.LEFT,
+                                        alignment: AlignmentType.CENTER,
                                         spacing: { after: 200 },
                                         children: [
                                             new TextRun({ text: "KHOA HÓA LÝ", bold: true, font: "Times New Roman", size: 22 })
@@ -2135,7 +2272,7 @@
                         new Paragraph({
                             spacing: { before: 300, after: 400 },
                             children: [
-                                new TextRun({ text: `TỔNG ĐIỂM ĐÁNH GIÁ (ADMIN): ${totalAdmin.toFixed(1)} / ${totalMax.toFixed(1)} ĐIỂM`, bold: true, font: "Times New Roman", size: 24 })
+                                new TextRun({ text: `TỔNG ĐIỂM ĐÁNH GIÁ: ${totalAdmin.toFixed(1)} / ${totalMax.toFixed(1)} ĐIỂM`, bold: true, font: "Times New Roman", size: 24 })
                             ]
                         }),
                         new Table({
